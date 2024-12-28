@@ -4,6 +4,13 @@ from typing import Optional
 
 
 @dataclass
+class Edge:
+    source: str
+    target: str
+    label: Optional[str] = None
+
+
+@dataclass
 class ResourceBlock:
     type: str
     name: str

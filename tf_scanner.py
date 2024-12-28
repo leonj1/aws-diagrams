@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 
-from mappings import create_diagram_nodes, write_diagram_yaml
+from mappings import create_diagram_nodes, create_diagram_edges, write_diagram_yaml
 from models import FileInfo, ResourceBlock
 
 
@@ -159,10 +159,18 @@ def main():
     for resource_type, count in sorted(resource_types.items()):
         print(f"  {resource_type}: {count}")
 
-    # create create_diagram_nodes
+    # Create diagram nodes and edges
     nodes = create_diagram_nodes(all_blocks)
+    edges = create_diagram_edges(all_blocks)
+    
+    # Print edge summary
+    print(f"\nTotal edges found: {len(edges)}")
+    for edge in edges:
+        print(f"  {edge.source} -> {edge.target}")
+
+    # Save diagram
     diagram_path = scan_path / "diagram.yaml"
-    write_diagram_yaml(nodes, diagram_path)
+    write_diagram_yaml(nodes, diagram_path, edges)
     print(f"\nDiagram saved to {diagram_path}")
 
     return 0
