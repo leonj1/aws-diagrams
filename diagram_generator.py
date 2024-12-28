@@ -14,6 +14,7 @@ from diagrams.aws.network import (
     Nacl
 )
 from diagrams.aws.security import IAMRole
+from diagrams.aws.general import General
 
 from models import Edge, Node
 
@@ -28,12 +29,17 @@ RESOURCE_TO_NODE = {
     "aws_iam_role": IAMRole,
     "aws_ecs_cluster": ECS,
     "aws_ecs_service": ECS,  # Use ECS for both cluster and service
-    "aws_ecs_task_definition": ECS
+    "aws_ecs_task_definition": ECS,
+    "provider": General  # Use AWS General icon for provider blocks
 }
 
 
 def get_node_class(resource_type: str):
     """Get the appropriate diagram node class for a resource type."""
+    # Handle provider blocks specially
+    if resource_type.startswith("provider-"):
+        return RESOURCE_TO_NODE["provider"]
+
     # Direct mapping
     if resource_type in RESOURCE_TO_NODE:
         return RESOURCE_TO_NODE[resource_type]
@@ -124,6 +130,48 @@ class DiagramGenerator:
 
         return cluster_nodes
 
+    def _get_resource_name(self, node_id: str) -> str:
+        """Extract the resource name from node ID or identifier."""
+        # Try to get from identifier first
+        node = next((n for n in self.yaml_nodes if n["id"] == node_id), None)
+        if node and (identifier := node.get("identifier")):
+            # Extract resource name from terraform identifier (e.g., "aws_vpc.main" -> "main")
+            return identifier.split(".")[-1]
+        
+        # Fallback to node ID
+        parts = node_id.split("-")
+        return parts[-1] if len(parts) > 1 else node_id
+
+    def _get_node_label(self, node_id: str) -> str:
+        """Get a two-line label with resource identifier and name."""
+        node = next((n for n in self.yaml_nodes if n["id"] == node_id), None)
+        if not node:
+            return node_id
+
+        # Special handling for provider blocks
+        if node_id.startswith("provider-"):
+            # Extract provider name and region from identifier
+            # e.g., "aws.provider.us-west-2" -> "aws\nus-west-2"
+            if identifier := node.get("identifier"):
+                parts = identifier.split(".")
+                if len(parts) >= 3:
+                    return f"{parts[0]}\n{parts[-1]}"
+            return node_id
+
+        # Get resource identifier (e.g., aws_vpc)
+        resource_type = node_id.split("-")[0]
+        
+        # Get resource name from identifier or node ID
+        if identifier := node.get("identifier"):
+            # Extract name from terraform identifier (e.g., "aws_vpc.main" -> "main")
+            name = identifier.split(".")[-1]
+        else:
+            # Fallback to last part of node ID
+            parts = node_id.split("-")
+            name = parts[-1] if len(parts) > 1 else node_id
+
+        return f"{resource_type}\n{name}"
+
     def _create_nodes(self):
         """Create diagram nodes from YAML description."""
         # First pass: create clusters and determine cluster membership
@@ -133,7 +181,8 @@ class DiagramGenerator:
         for node in self.yaml_nodes:
             node_id = node["id"]
             if node_id in cluster_nodes:
-                label = node.get("label", node_id.title())
+                # Use two-line label for clusters
+                label = self._get_node_label(node_id)
                 self._get_or_create_cluster(node_id, label)
 
         # Second pass: create nodes in their clusters
@@ -146,7 +195,8 @@ class DiagramGenerator:
             if node_id in cluster_nodes:
                 continue
 
-            label = node.get("label", node_id)
+            # Use two-line label for nodes
+            label = self._get_node_label(node_id)
             node_cluster = next(
                 (cluster_id for cluster_id, members in cluster_nodes.items() 
                  if node_id in members),
