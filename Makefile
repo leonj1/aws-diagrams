@@ -2,10 +2,10 @@
 
 PYTHON = python3
 TEST_MODULE = unittest
-TEST_FILES = test_tf_scanner.py test_mappings.py
+TEST_DIR = tests
 
 test:
-	$(PYTHON) -m $(TEST_MODULE) $(TEST_FILES) -v
+	$(PYTHON) -m $(TEST_MODULE) discover $(TEST_DIR) -v
 
 clean:
 	find . -type f -name "*.pyc" -delete
