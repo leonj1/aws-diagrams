@@ -81,30 +81,77 @@ class DiagramGenerator:
             self._cluster_map[cluster_id] = Cluster(label)
         return self._cluster_map[cluster_id]
 
+    def _get_cluster_nodes(self) -> Dict[str, set[str]]:
+        """Get all nodes that should be in each cluster, including indirectly related nodes."""
+        # Initialize with direct parent relationships
+        cluster_nodes: Dict[str, set[str]] = {}
+        for node in self.yaml_nodes:
+            if parent := node.get("parent"):
+                if parent not in cluster_nodes:
+                    cluster_nodes[parent] = set()
+                cluster_nodes[parent].add(node["id"])
+
+        # Build adjacency list from edges
+        adjacency: Dict[str, set[str]] = {}
+        for edge in self.yaml_edges:
+            source = edge["source"]
+            target = edge["target"]
+            if source not in adjacency:
+                adjacency[source] = set()
+            if target not in adjacency:
+                adjacency[target] = set()
+            adjacency[source].add(target)
+            adjacency[target].add(source)  # Bidirectional for cluster membership
+
+        # For each cluster, add nodes that are connected to its members
+        changed = True
+        while changed:
+            changed = False
+            for cluster_id, members in cluster_nodes.items():
+                new_members = set()
+                for member in members:
+                    if member in adjacency:
+                        for connected in adjacency[member]:
+                            if connected not in members and not any(
+                                connected in other_members 
+                                for other_id, other_members in cluster_nodes.items() 
+                                if other_id != cluster_id
+                            ):
+                                new_members.add(connected)
+                if new_members:
+                    changed = True
+                    members.update(new_members)
+
+        return cluster_nodes
+
     def _create_nodes(self):
         """Create diagram nodes from YAML description."""
-        # First pass: create clusters
+        # First pass: create clusters and determine cluster membership
+        cluster_nodes = self._get_cluster_nodes()
+        
+        # Create clusters first
         for node in self.yaml_nodes:
-            if node.get("parent"):
-                parent_id = node["parent"]
-                parent_label = next(
-                    (n["label"] for n in self.yaml_nodes if n["id"] == parent_id),
-                    parent_id.title()
-                )
-                self._get_or_create_cluster(parent_id, parent_label)
+            node_id = node["id"]
+            if node_id in cluster_nodes:
+                label = node.get("label", node_id.title())
+                self._get_or_create_cluster(node_id, label)
 
-        # Second pass: create nodes
+        # Second pass: create nodes in their clusters
         for node in self.yaml_nodes:
             node_id = node["id"]
             if node_id in self._node_map:
                 continue
 
-            # Skip if this is a cluster
-            if any(n.get("parent") == node_id for n in self.yaml_nodes):
+            # Skip if this is a cluster itself
+            if node_id in cluster_nodes:
                 continue
 
             label = node.get("label", node_id)
-            parent_id = node.get("parent")
+            node_cluster = next(
+                (cluster_id for cluster_id, members in cluster_nodes.items() 
+                 if node_id in members),
+                None
+            )
 
             # Get node class based on resource type
             resource_type = node_id.split("-")[0]
@@ -114,8 +161,8 @@ class DiagramGenerator:
                 continue
 
             # Create node in appropriate context
-            if parent_id:
-                with self._get_or_create_cluster(parent_id, ""):
+            if node_cluster:
+                with self._get_or_create_cluster(node_cluster, ""):
                     self._node_map[node_id] = node_class(label)
             else:
                 self._node_map[node_id] = node_class(label)
