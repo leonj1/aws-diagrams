@@ -1,23 +1,17 @@
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
+
 import yaml
-from tf_scanner import ResourceBlock
+
+from models import Node, ResourceBlock
 
 # these are aws resources that can have child resources
 can_be_parent = [
     "aws_vpc",
     "aws_subnet",
-    "aws_availability_zones",
     "aws_ecs_cluster",
     "aws_ecs_service"
 ]
-
-@dataclass
-class Node:
-    id: str
-    label: str
-    parent: Optional[str] = None
 
 
 def get_resource_parent(resource_type: str) -> Optional[str]:

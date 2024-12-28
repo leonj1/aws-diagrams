@@ -5,9 +5,8 @@ from unittest import TestCase
 
 import yaml
 
-from mappings import Node, create_diagram_nodes, write_diagram_yaml
-from tf_scanner import ResourceBlock
-
+from mappings import create_diagram_nodes, write_diagram_yaml
+from models import Node, ResourceBlock
 
 class TestMappings(TestCase):
     def test_create_diagram_nodes(self):

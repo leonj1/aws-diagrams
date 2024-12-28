@@ -3,10 +3,9 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
+from models import FileInfo, ResourceBlock
 from tf_scanner import (
-    FileInfo,
     FileScanner,
-    ResourceBlock,
     TerraformFileHandler,
     TerraformVarsFileHandler,
     extract_resource_blocks
@@ -52,12 +51,15 @@ class TestTerraformScanner(TestCase):
         scanner = FileScanner(handlers)
 
         test_file = Path(self.temp_dir) / "main.tf"
-        test_file.touch()
+        test_content = 'resource "aws_vpc" "main" {\n  name = "test-vpc"\n}'
+        with test_file.open('w') as f:
+            f.write(test_content)
 
         results = scanner.scan_directory(Path(self.temp_dir))
         self.assertEqual(len(results), 1)
         self.assertIsInstance(results[0], FileInfo)
         self.assertEqual(results[0].path, test_file)
+        self.assertEqual(results[0].content, test_content)
 
     def tearDown(self):
         for root, _, files in os.walk(self.temp_dir):

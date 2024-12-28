@@ -3,17 +3,71 @@
 import argparse
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List
+
+from mappings import create_diagram_nodes, write_diagram_yaml
+from models import FileInfo, ResourceBlock
 
 
-@dataclass
-class ResourceBlock:
-    type: str
-    name: str
-    content: str
-    identifier: str
+class FileHandler(ABC):
+    @abstractmethod
+    def can_handle(self, file_path: Path) -> bool:
+        pass
+
+    @abstractmethod
+    def process(self, file_path: Path) -> FileInfo:
+        pass
+
+
+class TerraformFileHandler(FileHandler):
+    def can_handle(self, file_path: Path) -> bool:
+        return file_path.suffix == '.tf'
+
+    def process(self, file_path: Path) -> FileInfo:
+        stats = file_path.stat()
+        with file_path.open('r') as f:
+            content = f.read()
+        return FileInfo(
+            path=file_path,
+            size=stats.st_size,
+            modified_time=stats.st_mtime,
+            content=content
+        )
+
+
+class TerraformVarsFileHandler(FileHandler):
+    def can_handle(self, file_path: Path) -> bool:
+        return file_path.suffix == '.tfvars'
+
+    def process(self, file_path: Path) -> FileInfo:
+        stats = file_path.stat()
+        with file_path.open('r') as f:
+            content = f.read()
+        return FileInfo(
+            path=file_path,
+            size=stats.st_size,
+            modified_time=stats.st_mtime,
+            content=content
+        )
+
+
+class FileScanner:
+    def __init__(self, handlers: List[FileHandler]):
+        self.handlers = handlers
+
+    def scan_directory(self, directory: Path) -> List[FileInfo]:
+        results = []
+
+        for root, _, files in os.walk(directory):
+            for file in files:
+                file_path = Path(root) / file
+                for handler in self.handlers:
+                    if handler.can_handle(file_path):
+                        results.append(handler.process(file_path))
+                        break
+
+        return results
 
 
 def extract_resource_blocks(content: str) -> List[ResourceBlock]:
@@ -51,7 +105,7 @@ def extract_resource_blocks(content: str) -> List[ResourceBlock]:
                             if len(name_parts) >= 2:
                                 actual_name = name_parts[1].strip().strip('"')
                                 break
-                    
+
                     blocks.append(ResourceBlock(
                         type=resource_type,
                         name=actual_name or resource_name,
@@ -63,67 +117,6 @@ def extract_resource_blocks(content: str) -> List[ResourceBlock]:
                 resource_name = None
 
     return blocks
-
-
-@dataclass
-class FileInfo:
-    path: Path
-    size: int
-    modified_time: float
-
-
-class FileHandler(ABC):
-    @abstractmethod
-    def can_handle(self, file_path: Path) -> bool:
-        pass
-
-    @abstractmethod
-    def process(self, file_path: Path) -> FileInfo:
-        pass
-
-
-class TerraformFileHandler(FileHandler):
-    def can_handle(self, file_path: Path) -> bool:
-        return file_path.suffix == '.tf'
-
-    def process(self, file_path: Path) -> FileInfo:
-        stats = file_path.stat()
-        return FileInfo(
-            path=file_path,
-            size=stats.st_size,
-            modified_time=stats.st_mtime
-        )
-
-
-class TerraformVarsFileHandler(FileHandler):
-    def can_handle(self, file_path: Path) -> bool:
-        return file_path.suffix == '.tfvars'
-
-    def process(self, file_path: Path) -> FileInfo:
-        stats = file_path.stat()
-        return FileInfo(
-            path=file_path,
-            size=stats.st_size,
-            modified_time=stats.st_mtime
-        )
-
-
-class FileScanner:
-    def __init__(self, handlers: List[FileHandler]):
-        self.handlers = handlers
-
-    def scan_directory(self, directory: Path) -> List[FileInfo]:
-        results = []
-
-        for root, _, files in os.walk(directory):
-            for file in files:
-                file_path = Path(root) / file
-                for handler in self.handlers:
-                    if handler.can_handle(file_path):
-                        results.append(handler.process(file_path))
-                        break
-
-        return results
 
 
 def main():
@@ -149,11 +142,28 @@ def main():
     scanner = FileScanner(handlers)
     results = scanner.scan_directory(scan_path)
 
+    # Collect all blocks from all files
+    all_blocks = []
+
     for file_info in results:
-        print(f"Found: {file_info.path}")
-        print(f"  Size: {file_info.size} bytes")
-        print(f"  Modified: {file_info.modified_time}")
-        print()
+        # Extract resource blocks from each file
+        blocks = extract_resource_blocks(file_info.content)
+        all_blocks.extend(blocks)
+
+    # Print summary
+    print(f"\nTotal resources found: {len(all_blocks)}")
+    print("\nResource types:")
+    resource_types = {}
+    for block in all_blocks:
+        resource_types[block.type] = resource_types.get(block.type, 0) + 1
+    for resource_type, count in sorted(resource_types.items()):
+        print(f"  {resource_type}: {count}")
+
+    # create create_diagram_nodes
+    nodes = create_diagram_nodes(all_blocks)
+    diagram_path = scan_path / "diagram.yaml"
+    write_diagram_yaml(nodes, diagram_path)
+    print(f"\nDiagram saved to {diagram_path}")
 
     return 0
 
