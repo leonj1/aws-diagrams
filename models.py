@@ -16,6 +16,7 @@ class Node:
     id: str
     label: str
     parent: Optional[str] = None
+    identifier: Optional[str] = None
 
 
 @dataclass

@@ -55,11 +55,13 @@ def create_diagram_nodes(resources: List[ResourceBlock]) -> List[Node]:
         node_id = resource.identifier.replace(".", "-")
         parent = get_resource_parent(resource.type)
         label = get_resource_label(resource.type, resource.name)
+        identifier = resource.identifier
 
         nodes.append(Node(
             id=node_id,
             label=label,
-            parent=parent
+            parent=parent,
+            identifier=identifier
         ))
 
     return nodes
@@ -68,7 +70,11 @@ def create_diagram_nodes(resources: List[ResourceBlock]) -> List[Node]:
 def write_diagram_yaml(nodes: List[Node], output_file: Path) -> None:
     node_dicts = []
     for node in nodes:
-        node_dict = {"id": node.id, "label": node.label}
+        node_dict = {
+            "id": node.id,
+            "identifier": node.identifier,
+            "label": node.label
+        }
         if node.parent:
             node_dict["parent"] = node.parent
         node_dicts.append(node_dict)
