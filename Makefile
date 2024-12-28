@@ -2,7 +2,7 @@
 
 PYTHON = python3
 TEST_MODULE = unittest
-TEST_FILES = test_tf_scanner.py
+TEST_FILES = test_tf_scanner.py test_mappings.py
 
 test:
 	$(PYTHON) -m $(TEST_MODULE) $(TEST_FILES) -v
