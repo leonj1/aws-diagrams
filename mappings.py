@@ -108,6 +108,37 @@ def create_diagram_nodes(resources: List[ResourceBlock]) -> List[Node]:
     return nodes
 
 
+def append_edges_to_diagram(edges: List[Edge], diagram_file: Path) -> None:
+    """Append edges to an existing diagram YAML file."""
+    # Read existing content
+    if diagram_file.exists():
+        with diagram_file.open('r') as f:
+            content = yaml.safe_load(f) or {}
+    else:
+        content = {}
+
+    # Convert edges to dictionary format
+    edge_dicts = []
+    for edge in edges:
+        edge_dict = {
+            "source": edge.source.replace(".", "-"),
+            "target": edge.target.replace(".", "-")
+        }
+        if edge.label:
+            edge_dict["label"] = edge.label
+        edge_dicts.append(edge_dict)
+
+    # Append or update edges in content
+    if "edges" in content:
+        content["edges"].extend(edge_dicts)
+    else:
+        content["edges"] = edge_dicts
+
+    # Write back to file with proper formatting
+    with diagram_file.open('w') as f:
+        yaml.safe_dump(content, f, sort_keys=False, indent=2)
+
+
 def write_diagram_yaml(nodes: List[Node], output_file: Path, edges: Optional[List[Edge]] = None) -> None:
     node_dicts = []
     for node in nodes:

@@ -9,7 +9,8 @@ from mappings import (
     create_diagram_nodes,
     create_edges_from_block,
     extract_resource_references,
-    write_diagram_yaml
+    write_diagram_yaml,
+    append_edges_to_diagram
 )
 from models import Node, ResourceBlock, Edge
 
@@ -141,6 +142,87 @@ class TestMappings(TestCase):
             self.assertEqual(len(content["edges"]), 1)
             
             # Check edge
+            edge = content["edges"][0]
+            self.assertEqual(edge["source"], "aws_subnet-private")
+            self.assertEqual(edge["target"], "aws_vpc-main")
+        
+        finally:
+            if output_path.exists():
+                output_path.unlink()
+
+    def test_append_edges_to_diagram(self):
+        # Create initial diagram with nodes
+        nodes = [
+            Node(id="node1", label="Node 1", identifier="aws_vpc.main"),
+            Node(id="node2", label="Node 2", identifier="aws_subnet.private")
+        ]
+        
+        initial_edges = [
+            Edge(source="aws_subnet.private", target="aws_vpc.main")
+        ]
+        
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            output_path = Path(tmp.name)
+        
+        try:
+            # Write initial diagram
+            write_diagram_yaml(nodes, output_path, initial_edges)
+            
+            # Create new edges to append
+            new_edges = [
+                Edge(source="aws_ecs_service.app", target="aws_subnet.private"),
+                Edge(source="aws_ecs_service.app", target="aws_vpc.main")
+            ]
+            
+            # Append new edges
+            append_edges_to_diagram(new_edges, output_path)
+            
+            # Verify result
+            with output_path.open() as f:
+                content = yaml.safe_load(f)
+            
+            self.assertIn("edges", content)
+            self.assertEqual(len(content["edges"]), 3)  # 1 initial + 2 new edges
+            
+            # Check all edges are present
+            edge_pairs = set()
+            for edge in content["edges"]:
+                edge_pairs.add((edge["source"], edge["target"]))
+            
+            expected_pairs = {
+                ("aws_subnet-private", "aws_vpc-main"),
+                ("aws_ecs_service-app", "aws_subnet-private"),
+                ("aws_ecs_service-app", "aws_vpc-main")
+            }
+            
+            self.assertEqual(edge_pairs, expected_pairs)
+        
+        finally:
+            if output_path.exists():
+                output_path.unlink()
+
+    def test_append_edges_to_nonexistent_diagram(self):
+        edges = [
+            Edge(source="aws_subnet.private", target="aws_vpc.main")
+        ]
+        
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            output_path = Path(tmp.name)
+        
+        try:
+            # Remove the file to test nonexistent file case
+            output_path.unlink()
+            
+            # Append edges to nonexistent file
+            append_edges_to_diagram(edges, output_path)
+            
+            # Verify result
+            with output_path.open() as f:
+                content = yaml.safe_load(f)
+            
+            self.assertIn("edges", content)
+            self.assertEqual(len(content["edges"]), 1)
+            
             edge = content["edges"][0]
             self.assertEqual(edge["source"], "aws_subnet-private")
             self.assertEqual(edge["target"], "aws_vpc-main")
