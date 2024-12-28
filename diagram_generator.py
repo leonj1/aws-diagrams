@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
-from diagrams import Diagram
+from diagrams import Diagram, Cluster
 from diagrams.aws.compute import ElasticContainerService as ECS
 from diagrams.aws.network import (
     InternetGateway,
@@ -47,61 +47,86 @@ def get_node_class(resource_type: str):
 
 
 class DiagramGenerator:
-    def __init__(self, diagram_file: Path):
-        """Initialize diagram generator with YAML file path."""
-        self.diagram_file = diagram_file
-        self.nodes: Dict[str, object] = {}
-        self.edges: List[Edge] = []
-        self._load_diagram()
+    """Generates AWS architecture diagrams from YAML descriptions."""
 
-    def _load_diagram(self) -> None:
-        """Load diagram data from YAML file."""
-        with self.diagram_file.open() as f:
+    def __init__(self, yaml_file: Path):
+        """Initialize with YAML file containing diagram description."""
+        if not yaml_file.exists():
+            raise ValueError(f"YAML file not found: {yaml_file}")
+
+        with yaml_file.open() as f:
             data = yaml.safe_load(f)
-            
-        if not data:
-            raise ValueError("Empty diagram file")
-            
-        self.yaml_nodes = data.get("nodes", [])
-        self.yaml_edges = data.get("edges", [])
+            if not data:
+                raise ValueError("Empty YAML file")
 
-    def _create_node(self, node_data: Dict) -> Optional[object]:
-        """Create a diagram node from node data."""
-        if not node_data.get("identifier"):
-            return None
-            
-        resource_type = node_data["identifier"].split(".")[0]
-        node_class = get_node_class(resource_type)
-        
-        if node_class:
-            # Create the node and store it for edge creation
-            node = node_class(node_data["label"])
-            self.nodes[node_data["id"]] = node
-            return node
-            
-        return None
+            self.yaml_nodes = data.get("nodes", [])
+            self.yaml_edges = data.get("edges", [])
+            self._node_map: Dict[str, object] = {}
+            self._cluster_map: Dict[str, Cluster] = {}
 
-    def generate(self, output_file: str = "infrastructure") -> None:
-        """Generate the infrastructure diagram."""
+    def generate(self, output_file: str):
+        """Generate diagram from YAML description."""
         with Diagram(
             "AWS Infrastructure",
             filename=output_file,
             show=False,
-            direction="TB"
+            direction="LR"
         ):
-            # First pass: create all nodes
-            for node_data in self.yaml_nodes:
-                self._create_node(node_data)
+            self._create_nodes()
+            self._create_edges()
+
+    def _get_or_create_cluster(self, cluster_id: str, label: str) -> Cluster:
+        """Get existing cluster or create a new one."""
+        if cluster_id not in self._cluster_map:
+            self._cluster_map[cluster_id] = Cluster(label)
+        return self._cluster_map[cluster_id]
+
+    def _create_nodes(self):
+        """Create diagram nodes from YAML description."""
+        # First pass: create clusters
+        for node in self.yaml_nodes:
+            if node.get("parent"):
+                parent_id = node["parent"]
+                parent_label = next(
+                    (n["label"] for n in self.yaml_nodes if n["id"] == parent_id),
+                    parent_id.title()
+                )
+                self._get_or_create_cluster(parent_id, parent_label)
+
+        # Second pass: create nodes
+        for node in self.yaml_nodes:
+            node_id = node["id"]
+            if node_id in self._node_map:
+                continue
+
+            # Skip if this is a cluster
+            if any(n.get("parent") == node_id for n in self.yaml_nodes):
+                continue
+
+            label = node.get("label", node_id)
+            parent_id = node.get("parent")
+
+            # Get node class based on resource type
+            resource_type = node_id.split("-")[0]
+            node_class = get_node_class(resource_type)
             
-            # Second pass: create all edges
-            for edge_data in self.yaml_edges:
-                source_node = self.nodes.get(edge_data["source"])
-                target_node = self.nodes.get(edge_data["target"])
-                
-                if source_node and target_node:
-                    source_node >> target_node
-                else:
-                    print(f"Warning: Skipping edge from {edge_data['source']} to {edge_data['target']} due to missing node")
+            if not node_class:
+                continue
+
+            # Create node in appropriate context
+            if parent_id:
+                with self._get_or_create_cluster(parent_id, ""):
+                    self._node_map[node_id] = node_class(label)
+            else:
+                self._node_map[node_id] = node_class(label)
+
+    def _create_edges(self):
+        """Create edges between nodes from YAML description."""
+        for edge in self.yaml_edges:
+            source = self._node_map.get(edge["source"])
+            target = self._node_map.get(edge["target"])
+            if source and target:
+                source >> target
 
 
 def generate_diagram(diagram_file: Path, output_file: str = "infrastructure") -> None:
