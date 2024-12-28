@@ -6,8 +6,10 @@ from unittest import TestCase
 from tf_scanner import (
     FileInfo,
     FileScanner,
+    ResourceBlock,
     TerraformFileHandler,
-    TerraformVarsFileHandler
+    TerraformVarsFileHandler,
+    extract_resource_blocks
 )
 
 
@@ -62,3 +64,46 @@ class TestTerraformScanner(TestCase):
             for file in files:
                 os.remove(os.path.join(root, file))
         os.rmdir(self.temp_dir)
+
+
+class TestResourceBlockExtraction(TestCase):
+    def test_extract_single_resource(self):
+        content = '''resource "aws_ecs_cluster" "main" {
+  name = "react-cluster"
+}'''
+        blocks = extract_resource_blocks(content)
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].type, "aws_ecs_cluster")
+        self.assertEqual(blocks[0].name, "react-cluster")
+        self.assertEqual(blocks[0].identifier, "aws_ecs_cluster.main")
+        self.assertEqual(blocks[0].content, content)
+
+    def test_extract_multiple_resources(self):
+        content = '''resource "aws_ecs_cluster" "main" {
+  name = "react-cluster"
+}
+
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name = "ecs-task-execution-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+}'''
+        blocks = extract_resource_blocks(content)
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[0].type, "aws_ecs_cluster")
+        self.assertEqual(blocks[0].name, "react-cluster")
+        self.assertEqual(blocks[0].identifier, "aws_ecs_cluster.main")
+        self.assertEqual(blocks[1].type, "aws_iam_role")
+        self.assertEqual(blocks[1].name, "ecs-task-execution-role")
+        self.assertEqual(blocks[1].identifier, "aws_iam_role.ecs_task_execution_role")

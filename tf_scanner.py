@@ -5,7 +5,64 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+
+@dataclass
+class ResourceBlock:
+    type: str
+    name: str
+    content: str
+    identifier: str
+
+
+def extract_resource_blocks(content: str) -> List[ResourceBlock]:
+    blocks = []
+    current_block = []
+    brace_count = 0
+    in_block = False
+    resource_type = None
+    resource_name = None
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        if not in_block and stripped.startswith('resource'):
+            parts = stripped.split('"')
+            if len(parts) >= 4:
+                resource_type = parts[1]
+                resource_name = parts[3]
+                in_block = True
+
+        if in_block:
+            current_block.append(line)
+            brace_count += line.count('{')
+            brace_count -= line.count('}')
+
+            if brace_count == 0:
+                in_block = False
+                if resource_type and resource_name:
+                    block_content = '\n'.join(current_block)
+                    # Extract the actual name from the name field in the block
+                    actual_name = None
+                    for line in current_block:
+                        if 'name' in line and '=' in line:
+                            name_parts = line.split('=')
+                            if len(name_parts) >= 2:
+                                actual_name = name_parts[1].strip().strip('"')
+                                break
+                    
+                    blocks.append(ResourceBlock(
+                        type=resource_type,
+                        name=actual_name or resource_name,
+                        content=block_content,
+                        identifier=f"{resource_type}.{resource_name}"
+                    ))
+                current_block = []
+                resource_type = None
+                resource_name = None
+
+    return blocks
 
 
 @dataclass
