@@ -127,6 +127,11 @@ def main():
         'directory',
         help='Directory to scan for Terraform files'
     )
+    parser.add_argument(
+        '--output',
+        default='infrastructure',
+        help='Output filename for the diagram (without extension)'
+    )
     args = parser.parse_args()
 
     scan_path = Path(args.directory)
@@ -168,10 +173,19 @@ def main():
     for edge in edges:
         print(f"  {edge.source} -> {edge.target}")
 
-    # Save diagram
+    # Save diagram YAML
     diagram_path = scan_path / "diagram.yaml"
     write_diagram_yaml(nodes, diagram_path, edges)
-    print(f"\nDiagram saved to {diagram_path}")
+    print(f"\nDiagram YAML saved to {diagram_path}")
+
+    # Generate visual diagram if diagrams module is available
+    try:
+        from diagram_generator import generate_diagram
+        generate_diagram(diagram_path, args.output)
+        print(f"\nVisual diagram saved to {args.output}.png")
+    except ImportError:
+        print("\nWarning: diagrams module not available. Install it with: pip install diagrams")
+        print("Visual diagram generation skipped.")
 
     return 0
 
